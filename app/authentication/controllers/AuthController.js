@@ -35,9 +35,22 @@ const register = (request, response) => {
                                 message: error.message,
                             });
                         } else {
+                            const token = jwt.sign(
+                                userModel.toJSON(),
+                                process.env.JWT_SECRET_OR_KEY,
+                                {
+                                    expiresIn: process.env.JWT_TOKEN_EXPIRATION,
+                                },
+                            );
                             response.status(200).send({
                                 success: true,
-                                user: userModel,
+                                user: {
+                                    email: userModel.email,
+                                    username: userModel.username,
+                                    lastName: userModel.lastName,
+                                    firstName: userModel.firstName,
+                                },
+                                token: `${process.env.JWT_TOKEN_PREFIX} ${token}`,
                             });
                         }
                     });
@@ -71,53 +84,61 @@ const login = async (request, response) => {
     const email = request.body.email || '';
     const password = request.body.password || '';
     if (email && password) {
-        User.findOne({ email: email }, (error, user) => {
-            // check if user exist
-            if (error) {
-                response.status(401).send({
-                    success: false,
-                    message: error.message,
-                });
-            } else {
-                if (!user) {
+        User.findOne({ email: email })
+            .select('+password')
+            .exec((error, user) => {
+                // check if user exist
+                if (error) {
                     response.status(401).send({
                         success: false,
-                        message: MesssageProvider.messageByKey(
-                            Messages.KEYS.USER_NOT_EXIST,
-                        ),
+                        message: error.message,
                     });
                 } else {
-                    // check if password matches
-                    user.comparePassword(password, (error, isMatch) => {
-                        if (isMatch && !error) {
-                            // if user is found and password is right create a token
-                            // algorithm: process.env.JWT_TOKEN_HASH_ALGO
-                            const token = jwt.sign(
-                                user.toJSON(),
-                                process.env.JWT_SECRET_OR_KEY,
-                                {
-                                    expiresIn: process.env.JWT_TOKEN_EXPIRATION,
-                                },
-                            );
+                    if (!user) {
+                        response.status(401).send({
+                            success: false,
+                            message: MesssageProvider.messageByKey(
+                                Messages.KEYS.USER_NOT_EXIST,
+                            ),
+                        });
+                    } else {
+                        // check if password matches
+                        user.comparePassword(password, (error, isMatch) => {
+                            if (isMatch && !error) {
+                                // if user is found and password is right create a token
+                                // algorithm: process.env.JWT_TOKEN_HASH_ALGO
+                                const token = jwt.sign(
+                                    user.toJSON(),
+                                    process.env.JWT_SECRET_OR_KEY,
+                                    {
+                                        expiresIn:
+                                            process.env.JWT_TOKEN_EXPIRATION,
+                                    },
+                                );
 
-                            // return the information including token as JSON
-                            response.status(200).send({
-                                success: true,
-                                user: user,
-                                token: `${process.env.JWT_TOKEN_PREFIX} ${token}`,
-                            });
-                        } else {
-                            response.status(401).send({
-                                success: false,
-                                message: MesssageProvider.messageByKey(
-                                    Messages.KEYS.WRONG_PASSWORD,
-                                ),
-                            });
-                        }
-                    });
+                                // return the information including token as JSON
+                                response.status(200).send({
+                                    success: true,
+                                    user: {
+                                        email: user.email,
+                                        username: user.username,
+                                        lastName: user.lastName,
+                                        firstName: user.firstName,
+                                    },
+                                    token: `${process.env.JWT_TOKEN_PREFIX} ${token}`,
+                                });
+                            } else {
+                                response.status(401).send({
+                                    success: false,
+                                    message: MesssageProvider.messageByKey(
+                                        Messages.KEYS.WRONG_PASSWORD,
+                                    ),
+                                });
+                            }
+                        });
+                    }
                 }
-            }
-        });
+            });
     } else {
         return response.status(401).send({
             success: false,
